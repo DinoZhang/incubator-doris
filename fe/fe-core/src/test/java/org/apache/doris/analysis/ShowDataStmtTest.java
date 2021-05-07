@@ -35,6 +35,8 @@ import org.junit.Test;
 import mockit.Expectations;
 import mockit.Mocked;
 
+import java.util.Arrays;
+
 public class ShowDataStmtTest {
 
     @Mocked
@@ -132,13 +134,16 @@ public class ShowDataStmtTest {
 
     @Test
     public void testNormal() throws AnalysisException, UserException {
-        ShowDataStmt stmt = new ShowDataStmt(null, null);
+        ShowDataStmt stmt = new ShowDataStmt(null, null,null);
         stmt.analyze(analyzer);
         Assert.assertEquals("SHOW DATA FROM `testCluster:testDb`", stmt.toString());
         Assert.assertEquals(3, stmt.getMetaData().getColumnCount());
         Assert.assertEquals(false, stmt.hasTable());
-        
-        stmt = new ShowDataStmt("testDb", "test_tbl");
+
+        SlotRef slotRef = new SlotRef(null, "Size");
+        OrderByElement orderByElement = new OrderByElement(slotRef, false, false);
+
+        stmt = new ShowDataStmt("testDb", "test_tbl", Arrays.asList(orderByElement));
         stmt.analyze(analyzer);
         Assert.assertEquals("SHOW DATA FROM `default_cluster:testDb`.`test_tbl`", stmt.toString());
         Assert.assertEquals(5, stmt.getMetaData().getColumnCount());
