@@ -17,6 +17,7 @@
 
 package org.apache.doris.analysis;
 
+import com.google.common.collect.Lists;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
@@ -40,6 +41,7 @@ import org.apache.doris.qe.ShowResultSetMetaData;
 import com.google.common.base.Strings;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
@@ -69,14 +71,16 @@ public class ShowDataStmt extends ShowStmt {
     private String tableName;
 
     List<List<String>> totalRows;
+    private OrderByElement orderBySize;
+    private List<OrderByElement> orderByElements;
 
-    public ShowDataStmt(String dbName, String tableName) {
+
+    public ShowDataStmt(String dbName, String tableName, List<OrderByElement> orderByElements) {
         this.dbName = dbName;
         this.tableName = tableName;
-
-        this.totalRows = new LinkedList<List<String>>();
+        this.totalRows = Lists.newArrayList();
+        this.orderByElements = orderByElements;
     }
-
     @Override
     public void analyze(Analyzer analyzer) throws AnalysisException, UserException {
         super.analyze(analyzer);
@@ -94,6 +98,23 @@ public class ShowDataStmt extends ShowStmt {
             ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
         }
         db.readLock();
+        // order by size
+        if (orderByElements != null && !orderByElements.isEmpty()) {
+            for (OrderByElement orderByElement : orderByElements) {
+                if (!(orderByElement.getExpr() instanceof SlotRef) ||
+                        !"size".equals(((SlotRef) orderByElement.getExpr()).getColumnName().toLowerCase())) {
+                    throw new AnalysisException("Should order by Size");
+                }
+                orderBySize = orderByElement;
+            }
+        }
+
+        SortedSet<List<String>> sortedTablesBySize = new TreeSet<>(new Comparator<List<String>>() {
+            @Override
+            public int compare(final List<String> o1, final List<String> o2) {
+                return Long.valueOf(o1.get(0)).compareTo(Long.valueOf(o2.get(0)));
+            }
+        });
         try {
             if (tableName == null) {
                 long totalSize = 0;
@@ -130,12 +151,25 @@ public class ShowDataStmt extends ShowStmt {
                     String readableSize = DebugUtil.DECIMAL_FORMAT_SCALE_3.format(tableSizePair.first) + " "
                             + tableSizePair.second;
 
-                    List<String> row = Arrays.asList(table.getName(), readableSize, String.valueOf(replicaCount));
-                    totalRows.add(row);
+                    if (orderBySize == null) {
+                        List<String> row = Arrays.asList(table.getName(), readableSize, String.valueOf(replicaCount));
+                        totalRows.add(row);
+                    } else {
+                        List<String> row = Arrays.asList(tableSize + "", table.getName(), readableSize, String.valueOf(replicaCount));
+                        sortedTablesBySize.add(row);
+                    }
 
                     totalSize += tableSize;
                     totalReplicaCount += replicaCount;
                 } // end for tables
+                if (orderBySize != null) {
+                    for (List<String> row : sortedTablesBySize) {
+                        totalRows.add(row.subList(1, row.size()));
+                    }
+                    if (!orderBySize.getIsAsc()) {
+                        Collections.reverse(totalRows);
+                    }
+                }
 
                 Pair<Double, String> totalSizePair = DebugUtil.getByteUint(totalSize);
                 String readableSize = DebugUtil.DECIMAL_FORMAT_SCALE_3.format(totalSizePair.first) + " "
@@ -209,23 +243,50 @@ public class ShowDataStmt extends ShowStmt {
 
                     List<String> row = null;
                     if (i == 0) {
-                        row = Arrays.asList(tableName,
-                                            olapTable.getIndexNameById(indexId),
-                                            readableSize, String.valueOf(indexReplicaCount),
-                                            String.valueOf(indexRowCount));
+                        if (orderBySize == null) {
+                            row = Arrays.asList("", tableName,
+                                    olapTable.getIndexNameById(indexId),
+                                    readableSize, String.valueOf(indexReplicaCount),
+                                    String.valueOf(indexRowCount));
+                            totalRows.add(row);
+                        }else{
+                            row = Arrays.asList(indexSize + "", tableName,
+                                    olapTable.getIndexNameById(indexId),
+                                    readableSize, String.valueOf(indexReplicaCount),
+                                    String.valueOf(indexRowCount));
+                            sortedTablesBySize.add(row);
+                        }
                     } else {
-                        row = Arrays.asList("",
-                                            olapTable.getIndexNameById(indexId),
-                                            readableSize, String.valueOf(indexReplicaCount),
-                                            String.valueOf(indexRowCount));
+                        if (orderBySize == null) {
+                            row = Arrays.asList("",
+                                    olapTable.getIndexNameById(indexId),
+                                    readableSize, String.valueOf(indexReplicaCount),
+                                    String.valueOf(indexRowCount));
+                            totalRows.add(row);
+                        }else{
+                            row = Arrays.asList(indexSize + "", "",
+                                    olapTable.getIndexNameById(indexId),
+                                    readableSize, String.valueOf(indexReplicaCount),
+                                    String.valueOf(indexRowCount));
+                            sortedTablesBySize.add(row);
+
+                        }
                     }
+
 
                     totalSize += indexSize;
                     totalReplicaCount += indexReplicaCount;
-                    totalRows.add(row);
 
                     i++;
                 } // end for indices
+                if (orderBySize != null) {
+                    for (List<String> row : sortedTablesBySize) {
+                        totalRows.add(row.subList(1, row.size()));
+                    }
+                    if (!orderBySize.getIsAsc()) {
+                        Collections.reverse(totalRows);
+                    }
+                }
 
                 Pair<Double, String> totalSizePair = DebugUtil.getByteUint(totalSize);
                 String readableSize = DebugUtil.DECIMAL_FORMAT_SCALE_3.format(totalSizePair.first) + " "
