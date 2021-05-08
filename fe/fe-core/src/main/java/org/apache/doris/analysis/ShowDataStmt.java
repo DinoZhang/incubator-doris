@@ -165,7 +165,7 @@ public class ShowDataStmt extends ShowStmt {
                 } // end for tables
                 if (orderBySize != null) {
                     for (List<String> row : sortedTablesBySize) {
-                        totalRows.add(row.subList(1, row.size() - 1));
+                        totalRows.add(row.subList(1, row.size()));
                     }
                     if (!orderBySize.getIsAsc()) {
                         Collections.reverse(totalRows);
@@ -281,7 +281,7 @@ public class ShowDataStmt extends ShowStmt {
 
                 if (orderBySize != null) {
                     for (List<String> row : sortedTablesBySize) {
-                        totalRows.add(row.subList(1, row.size() - 1));
+                        totalRows.add(row.subList(1, row.size()));
                     }
                     if (!orderBySize.getIsAsc()) {
                         Collections.reverse(totalRows);
